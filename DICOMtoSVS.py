@@ -52,7 +52,8 @@ def extract_icc_profile(dicom_path):
 
 def get_filename_no_ext(path):
     filename_noext_list = []
-    for filename in os.listdir(path):
+    filenames = [f for f in os.listdir(path) if 'DS_Store' not in f]  #exclude Mac OS files
+    for filename in filenames:
         if not os.path.isdir(filename): 
             (name, ext) = os.path.splitext(filename)
             if not ext:
@@ -507,10 +508,10 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
             with zipfile.ZipFile(path_to_folder + '/' + WSI, 'r') as zip_ref:
                 zip_ref.extractall(path_unzip + '/' + WSI[:-4])  #same name, just without the .zip extension
         #list of folder of DICOM images. One folder per image
-        WSI_dir = [f for f in os.listdir(path_unzip) ]
+        WSI_dir = [f for f in os.listdir(path_unzip) if 'DS_Store' not in f] #exclude Mac OS files
         WSI_dir = os_sorted(WSI_dir)
     else: #no zipped files, list all image folder
-        WSI_dir = [f for f in os.listdir(path_to_folder)]
+        WSI_dir = [f for f in os.listdir(path_to_folder) if 'DS_Store' not in f] #exclude Mac OS files
         WSI_dir = os_sorted(WSI_dir)
         path_unzip = path_to_folder
     print(f'Number of identified WSI is: {len(WSI_dir)}')
