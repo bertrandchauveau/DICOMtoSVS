@@ -64,7 +64,12 @@ The arguments, to be defined through Tkinter user interface are:
 
 ## Installation instructions and usage (Windows or MacOS executable):
 - end-users must seek the validation of their information technology service management before using the application on an institutional device and only use DICOM originating from a trusted source
-- download the DICOMtoSVS.zip file at: pending
+- download the DICOMtoSVS.zip file at:
+
+  => Windows: pending
+  
+  => MacOS: pending
+  
 - decompress the file in your local disk, ending up with a DICOMtoSVS folder containing a "DICOMtoSVS.exe" file and a "_internal" folder, containing required files to run the executable. Do not separate the "_internal" folder from the exe file. 
 - optional: create a desktop shortcut of the .exe file (right-clik, create shortcut)
 - when running the .exe file for the first time, Windows will display a warning message "unknown publisher". This is an expected behavior from Windows.
