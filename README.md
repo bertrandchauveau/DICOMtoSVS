@@ -1,7 +1,7 @@
 # DICOMtoSVS
 To convert brightfield and singleplex fluorescence DICOM whole slide images into SVS-like TIFF pyramidal images
 
-This work is currently under review at a scientific journal. A link to the published article and to the Windows executable will be displayed in due time.
+This work has been published in Virchows Archiv, the official journal of the European Society of Pathology (DOI: 10.1007/s00428-025-04135-0, https://link.springer.com/article/10.1007/s00428-025-04135-0). You can cite this paper if this work is useful to you.
 
 Pathology Departments are encouraged to use Digital Imaging and Communication in Medicine (DICOM) for their workflow of whole slide images (WSI), like radiologists before them. While this allows for a secure and universal workflow in routine with WSI from scanners of various vendors, as of 2025, DICOM adoption for WSI remains emerging and DICOM is not supported by some web-based platforms dedicated to collaborative diagnosis and research (e.g. TeleSlide, Cytomine) or some python packages dedicated to WSI (e.g., RAPIDS cuCIM).
 
@@ -66,9 +66,9 @@ The arguments, to be defined through Tkinter user interface are:
 - end-users must seek the validation of their information technology service management before using the application on an institutional device and only use DICOM originating from a trusted source
 - download the DICOMtoSVS.zip file at:
 
-  => Windows: pending
+  => Windows: link in the paper
   
-  => MacOS: pending
+  => MacOS: link in the paper
   
 - decompress the file in your local disk, ending up with a DICOMtoSVS folder containing a "DICOMtoSVS.exe" file and a "_internal" folder, containing required files to run the executable. Do not separate the "_internal" folder from the exe file. 
 - optional: create a desktop shortcut of the .exe file (right-clik, create shortcut)
