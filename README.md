@@ -20,8 +20,8 @@ The code is provided in 3 ways:
 The Python script was tested using a Windows operating system in a conda virtual environment.
 The main dependencies used were:
 - Pydicom 2.4.4
-- imagecodecs 2024.6.1
-- tifffile 2024.7.2
+- imagecodecs 2024.12.30
+- tifffile 2024.12.12
 - natsort 8.4.0
 - numpy 1.26.4
 - pillow 10.4.0
