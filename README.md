@@ -13,7 +13,7 @@ The code is provided in 3 ways:
 - a Colab-compatible jupyter notebook for easy testing
 - a Python script to be run through Command Line Interface
 - a Windows and MacOS executable created using PyInstaller 6.9.0, as such prior coding knowledge is not required
-<a target="_blank" href="https://colab.research.google.com/github/bertrandchauveau/DICOMtoSVS/blob/main/DICOM_to_SVS.ipynb">
+<a target="_blank" href="https://colab.research.google.com/github/bertrandchauveau/DICOMtoSVS/blob/main/DICOMtoSVS_14082025.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
