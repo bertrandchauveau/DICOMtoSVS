@@ -27,8 +27,8 @@ The main dependencies used were:
 - pillow 10.4.0
 - pylibjpeg 2.0.1
 
-The Windows executable was tested on Windows 10 Professional 22H2 and Windows 11 Professional 23H2. The only required dependency is Microsoft Visual C++ Redistributable, available at https://learn.microsoft.com/fr-fr/cpp/windows/latest-supported-vc-redist?view=msvc-170.
-The MacOS executable was tested on MacOS Sequoia 15.3.1.
+The Windows executable was tested on Windows 10 Professional 22H2 and Windows 11 Professional 24H2. The only required dependency is Microsoft Visual C++ Redistributable, available at https://learn.microsoft.com/fr-fr/cpp/windows/latest-supported-vc-redist?view=msvc-170.
+The MacOS executable was tested on MacOS Sequoia 15.6.1.
 
 Using a 13th Gen Intel(R) Core(TM) i7-13700 with 16Gb of RAM, the mean time to convert a 1Gb WSI is about 18 seconds. Label and macro images, when present in the original DICOM file, can either be removed or retained during conversion. Optionally, additional DICOM tags can be embedded in the converted file in a custom TIFF tag (65000). Moreover, WSI anonymization can be performed during conversion, by renaming the WSI, and by removing label and macro images, together with optional metadata.
 
