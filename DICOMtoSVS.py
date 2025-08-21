@@ -94,6 +94,109 @@ def serialize_value(value):
         return str(value)  # Convert UID to string
     return value  # For other types, return as is
 
+def check_app14_marker(data):
+       # Search for the APP14 marker (0xFFEE)
+    app14_index = data.find(b'\xFF\xEE')
+    if app14_index == -1:
+        #print("APP14 marker not found. Defaulting to YCbCr for 3-component images.")
+        return None
+    # Extract the length of the APP14 segment
+    length = int.from_bytes(data[app14_index+2:app14_index+4], byteorder='big')
+    # Check if the segment contains "Adobe"
+    if data[app14_index+4:app14_index+9] != b'Adobe':
+        #print("APP14 segment does not contain Adobe data. Defaulting to YCbCr for 3-component images.")
+        return None
+    # Extract the color encoding byte
+    color_encoding = data[app14_index+9] #0 or 1
+    if color_encoding != 0 and color_encoding != 1:
+        print(f"Unknown color encoding value: {color_encoding}")
+    return color_encoding #None, 0 or 1
+
+def get_exif_colorspace(data: bytes) -> int | None:
+    i = 0
+    while i < len(data) - 4:
+        if data[i] == 0xFF and data[i+1] == 0xE1:  # APP1 marker
+            length = int.from_bytes(data[i+2:i+4], byteorder='big')
+            segment = data[i+4:i+2+length]
+            if segment[:6] == b'Exif\x00\x00':
+                # Now decode TIFF header and find tag 0xA001
+                endianness = segment[6:8]
+                endian = 'little' if endianness == b'II' else 'big'
+                offset = int.from_bytes(segment[10:14], endian)
+                ifd_start = 6 + offset
+                num_entries = int.from_bytes(segment[ifd_start:ifd_start+2], endian)
+                pos = ifd_start + 2
+                for _ in range(num_entries):
+                    tag = int.from_bytes(segment[pos:pos+2], endian)
+                    if tag == 0xA001:
+                        val_offset = pos + 8
+                        colorspace = int.from_bytes(segment[val_offset:val_offset+2], endian)
+                        return colorspace  # 1 = sRGB, 65535 = uncalibrated
+                    pos += 12
+        i += 1
+    return None
+
+def find_first_level_below_pixel_limit(height_dict, width_dict, pixel_limit=4096 * 4096):
+    #Finds the first level where the total number of pixels is below a specified limit.
+
+    sorted_levels = sorted(height_dict.keys())
+    for level in sorted_levels:
+        height = height_dict.get(level)
+        width = width_dict.get(level)
+        if height is not None and width is not None and height * width < pixel_limit:
+            return level
+    return None
+
+def has_icc_profile(data: bytes) -> bool:
+    i = 0
+    while i < len(data) - 4:
+        if data[i] == 0xFF and data[i+1] == 0xE2:  # APP2 marker
+            length = int.from_bytes(data[i+2:i+4], byteorder='big')
+            segment = data[i+4:i+2+length]
+            if segment.startswith(b'ICC_PROFILE\0'):
+                return True
+        i += 1
+    return False
+    
+def get_component_ids(data: bytes) -> list[int] | None:
+    i = 0
+    while i < len(data) - 4:
+        if data[i] == 0xFF and data[i+1] in (0xC0, 0xC2):  # SOF0 / SOF2
+            length = int.from_bytes(data[i+2:i+4], byteorder='big')
+            sof = data[i+4:i+2+length]
+            num_components = sof[5]
+            component_ids = [sof[6 + i * 3] for i in range(num_components)]
+            return component_ids
+        i += 1
+    return None
+
+def infer_color_space(component_ids, app14_transform, exif_cs, has_icc): #YCbCr or RGB for JPEG encoded tile
+    if component_ids == [82, 71, 66]:  # 'R', 'G', 'B'
+        return "rgb" #"RGB (component labels)"
+    elif app14_transform == 0:
+        return "rgb" #"RGB (APP14 Adobe)"
+    elif exif_cs == 1:
+        return "rgb" #"sRGB (Exif)"
+    elif component_ids == [1, 2, 3]:
+        return "ycbcr" #"YCbCr (standard JPEG)"
+    elif component_ids == [0, 1, 2]:
+        if app14_transform == 0:
+            return "rgb" #"RGB (APP14 transform=0)"
+        elif has_icc:
+            return "rgb" #"RGB (with ICC profile)"
+        else:
+            return "ycbcr" #"Unknown – possibly RGB"
+    else:
+        return "ycbcr" #"Unknown – check ICC or APP markers"
+
+def merge_dicts(dict1, dict2):
+    if dict1 is None and dict2 is None:
+        return {}
+    if dict1 is None:
+        return dict2.copy() if dict2 is not None else {}
+    if dict2 is None:
+        return dict1.copy() if dict1 is not None else {}
+    return {**dict1, **dict2}
 
 def decipher_dcm_folder(path_to_dcm):
     #list of files .dcm while excluding annotations
@@ -253,7 +356,7 @@ def get_main_metada(path_to_dcm, pixel_size):
     return tag_dict
 
 
-def create_img_from_tiles(ds, thumbnail_tiles):
+def create_img_from_tiles(ds, thumbnail_tiles, color_space):
     tile_size_x = ds.Columns
     tile_size_y = ds.Rows
     if ds.TotalPixelMatrixColumns % ds.Columns != 0: #pas un multiple de la tile size
@@ -266,7 +369,7 @@ def create_img_from_tiles(ds, thumbnail_tiles):
         nb_tile_y = ds.TotalPixelMatrixRows // ds.Rows
     img_width = ds.TotalPixelMatrixColumns #width
     img_height = ds.TotalPixelMatrixRows #height
-    photometric_interpretation = ds.PhotometricInterpretation
+    photometric_interpretation = ds.PhotometricInterpretation #color_space more reliable for brigthfield jpeg encoded tiles
     expected_nb_tiles = nb_tile_x * nb_tile_y
     
     # Iterate through the mask and extract non-overlapping tiles with positive pixels
@@ -295,11 +398,16 @@ def create_img_from_tiles(ds, thumbnail_tiles):
         if  ds.DimensionOrganizationType == 'TILED_FULL': #tiled_full
             pass
         else: #tiled_sparse
-            thumbnail_encoded_tiles = create_frame_list_tiled_sparse(ds) #as jpeg encoded tiles
+            thumbnail_encoded_tiles = create_frame_list_tiled_sparse(ds, color_space) #as jpeg encoded tiles
             thumbnail_tiles = []
-            for tile in thumbnail_encoded_tiles:
-                decoded_tile = imagecodecs.jpeg8_decode(tile, outcolorspace='YCBCR')
-                thumbnail_tiles.append(decoded_tile)
+            if ds.file_meta.TransferSyntaxUID == '1.2.840.10008.1.2.4.91': #JPEG2000
+                for tile in thumbnail_encoded_tiles:
+                    decoded_tile = imagecodecs.jpeg2k_decode(tile) #outcolorspace argument fails and output is always RGB whatever the color space
+                    thumbnail_tiles.append(decoded_tile)
+            else: #assume JPEG Baselin otherwise 
+                for tile in thumbnail_encoded_tiles:
+                    decoded_tile = imagecodecs.jpeg8_decode(tile) #outcolorspace argument fails and output is always RGB whatever the color space
+                    thumbnail_tiles.append(decoded_tile)
 
     if photometric_interpretation =='MONOCHROME2': #grayscale
         if ds.NumberOfFrames==1: #only one grayscale frame/tile of only 2 dimensions
@@ -313,13 +421,14 @@ def create_img_from_tiles(ds, thumbnail_tiles):
     else:    #brightfield
         if ds.NumberOfFrames==1: #only one color frame/tile of 3 dimensions
             thumbnail_array = thumbnail_tiles[0:img_height, 0:img_width,:]
-            if photometric_interpretation != 'RGB': #sometimes YBR_FULL_422          
+            #color_space is None if JPEG2000
+            if color_space == 'ycbcr': #more frequently YBR_FULL_422  i.e. ycbcr than rgb      
                 thumbnail_array = convert_color_space(thumbnail_array, photometric_interpretation, 'RGB')
         else:
             idx = 0
             thumbnail_array = np.zeros((ds.TotalPixelMatrixRows, ds.TotalPixelMatrixColumns,3), dtype = np.uint8)
             for tile_array in thumbnail_tiles:
-                if photometric_interpretation != 'RGB': #sometimes YBR_FULL_422          
+                if color_space == 'ycbcr' and ds.DimensionOrganizationType == 'TILED_FULL': #if tiled sparse, decoding is always RGB       
                     tile_array = convert_color_space(tile_array, photometric_interpretation, 'RGB')
                 thumbnail_array[int(coords[idx][0]*ds.Rows):int(coords[idx][0]*ds.Rows)+tile_size[idx][0], int(coords[idx][1]*ds.Columns):int(coords[idx][1]*ds.Columns)+tile_size[idx][1]] = tile_array[0:tile_size[idx][0], 0:tile_size[idx][1]]
                 idx += 1
@@ -423,11 +532,11 @@ def get_lut(ds):
     return luts
 
 
-def create_frame_list_tiled_sparse(ds):
+def create_frame_list_tiled_sparse(ds, color_space):
     #expected number of tiles and coordinates if tiled_full
     tile_size_x = ds.Columns
     tile_size_y = ds.Rows
-    photometric_interpretation = ds.PhotometricInterpretation
+    photometric_interpretation = ds.PhotometricInterpretation #color_space more reliable for jpeg encoded tiles
     if ds.TotalPixelMatrixColumns % ds.Columns != 0: #pas un multiple de la tile size
         nb_tile_x = ds.TotalPixelMatrixColumns // ds.Columns +1 #integer division
     else:
@@ -476,11 +585,17 @@ def create_frame_list_tiled_sparse(ds):
         blank_tile = np.zeros((tile_size_y, tile_size_x), dtype = np.uint8) #grayscale, black background
     else: #assume brightfield otherwise
         blank_tile = np.ones((tile_size_y, tile_size_x, 3), dtype = np.uint8) * 255  #RGB, white background
-        if photometric_interpretation != 'RGB': #sometimes YBR_FULL_422          
-            blank_tile = convert_color_space(blank_tile, 'RGB', photometric_interpretation)
+        #if photometric_interpretation != 'RGB': #more frequently YBR_FULL_422          
+        #    blank_tile = convert_color_space(blank_tile, 'RGB', photometric_interpretation)
     #encode blank tile
     if ds.file_meta.TransferSyntaxUID == '1.2.840.10008.1.2.4.50' or ds.file_meta.TransferSyntaxUID == '1.2.840.10008.1.2.4.51':  #JPEG
-        blank_tile = imagecodecs.jpeg8_encode(blank_tile, colorspace='JCS_YCbCr', bitspersample=int(ds.BitsAllocated), optimize=1)
+        #blank_tile = imagecodecs.jpeg8_encode(blank_tile, colorspace='JCS_YCbCr', bitspersample=int(ds.BitsAllocated), optimize=1)
+        if color_space =='rgb':
+            blank_tile = imagecodecs.jpeg8_encode(blank_tile, colorspace='RGB', outcolorspace='RGB', bitspersample=int(ds.BitsAllocated), optimize=1)
+        elif color_space =='ycbcr':
+            blank_tile = imagecodecs.jpeg8_encode(blank_tile, colorspace='RGB', outcolorspace='YCBCR', bitspersample=int(ds.BitsAllocated), optimize=1)
+        elif color_space =='MONOCHROME2':
+            blank_tile = imagecodecs.jpeg8_encode(blank_tile, bitspersample=int(ds.BitsAllocated), optimize=1)
     elif ds.file_meta.TransferSyntaxUID == '1.2.840.10008.1.2.4.91': #JPEG2000
         if photometric_interpretation != 'RGB':
             blank_tile = imagecodecs.jpeg2k_encode(blank_tile, codecformat='J2K', bitspersample=int(ds.BitsAllocated), colorspace='SYCC')
@@ -604,8 +719,13 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
         #supported compression type : JPEG or JPEG2000
         compression_arg = None
         if tag_dict['Compression']== 'JPEG Baseline (Process 1)':
+            compression_arg = 'jpeg'
+            if tag_dict['Photometric Interpretation'] == 'RGB':
+                compression_name = 'JPEG/RGB'
+            elif tag_dict['Photometric Interpretation'] == 'YBR_FULL_422' or tag_dict['Photometric Interpretation'] == 'YBR_FULL':        
                 compression_name = 'JPEG/YCC'
-                compression_arg = 'jpeg'
+            elif tag_dict['Photometric Interpretation'] == 'MONOCHROME2':
+                compression_name = 'JPEG/MO2'
         elif tag_dict['Compression']== 'JPEG 2000 Image Compression':
             if tag_dict['Photometric Interpretation'] == 'RGB':
                 compression_name = 'J2K/KDU'
@@ -637,9 +757,9 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
             if compression_arg is None:
                 print(f'Unsupported compression type for image: {WSI_name}.')
             if is_multiplex is True:
-                print(f'Unsupported image type for image: {WSI_name}. Multiplexed image detected.')
+                print(f'Unsupported image type for: {WSI_name}. Multiplexed image detected.')
             if is_multiplane is True:
-                print(f'Unsupported image type for image: {WSI_name}. Multiplane image detected.')
+                print(f'Unsupported image type for: {WSI_name}. Multiplane image detected.')
             
         else:
             #JPEG/YCC #if JPEG compression
@@ -690,6 +810,8 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
 
             #Brightfield VS Fluorescence
             if photometric_interpretation == 'MONOCHROME2': #grayscale, deemed to encode a fluorescence image 
+                color_space = 'MONOCHROME2'
+                compressionargs = None
                 try:
                     luts = get_lut(ds)   
                     color_map = np.asarray((luts[0], luts[1], luts[2]))
@@ -710,13 +832,36 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                     colormap_FITC = np.array((r_lut, g_lut, b_lut))
                     #define args for grayscale tiff writing with colormap
                     photometric_arg = 'palette'
+                    thumbnail_photometric_arg = 'palette'
+                    thumbnail_compressionargs = None
                     color_map = colormap_FITC
                     shape_arg = (WSI_shape[1], WSI_shape[0])
                     
             else: #brightfield
-                photometric_arg = 'rgb'
+                #Photometric Interpretation based on DICOM tag non rarely unreliable, check a frame to determine the colorspace if JPEG encoded
+                compressionargs = None
+                color_space = None
+                if tag_dict['Compression']== 'JPEG Baseline (Process 1)': #JPEG2000 works without outcolorspace stated
+                    test_frame = next(generate_pixel_data_frame(ds.PixelData, ds.NumberOfFrames))
+                    color_space = infer_color_space(get_component_ids(test_frame),check_app14_marker(test_frame),  get_exif_colorspace(test_frame), has_icc_profile(test_frame))
+                    if color_space=='rgb':
+                        compressionargs = {"outcolorspace": 'rgb'}
+                        photometric_arg = 'rgb' #'ycbcr' #rgb for the thumbnail encoded by tifffile, but should be adapted for other pyramidal levels
+                    else: #classic YCbCr encoded jpeg
+                        compressionargs = {"outcolorspace": 'ycbcr'}
+                        photometric_arg = 'ycbcr' 
+                if tag_dict['Compression']== 'JPEG 2000 Image Compression': #JPEG2000 works without outcolorspace stated
+                    if photometric_interpretation == 'YBR_ICT':
+                        compressionargs = {"outcolorspace": 'ycbcr'}
+                        photometric_arg = 'ycbcr' 
+                    elif photometric_interpretation == 'RGB':
+                        compressionargs = {"outcolorspace": 'rgb'}
+                        photometric_arg = 'rgb'                     
+                    
                 color_map = None
                 shape_arg = (WSI_shape[1], WSI_shape[0], 3)
+                thumbnail_photometric_arg = 'rgb'
+                thumbnail_compressionargs = {"outcolorspace": 'rgb'}
             
             #ICC profile
             icc_profile_bytes = None
@@ -740,7 +885,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                 if  ds.DimensionOrganizationType == 'TILED_FULL': #tiled_full
                     frame_list_tiled_full = None #decoy
                 else: #tiled_sparse
-                    frame_list_tiled_full = create_frame_list_tiled_sparse(ds)
+                    frame_list_tiled_full = create_frame_list_tiled_sparse(ds, color_space)
                 
                 #write the full resolution image
                 tif.write(data=generate_tiles(ds, frame_list_tiled_full),
@@ -751,7 +896,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                           resolution=(1e4 / pixel_size, 1e4 / pixel_size),  #1e-4 because resolution is in centimeter #Number of pixels per `resolutionunit` in X and Y directions
                           photometric=photometric_arg,  #will be automatically converted to YCbCr if RGB
                           compression=compression_arg,
-                          compressionargs={'level':91},  #the quality parameter found in WSI from the Aperio GT450 DX
+                          compressionargs=compressionargs,  #the quality parameter found in WSI from the Aperio GT450 DX
                           tile=(tag_dict['Rows'],tag_dict['Columns']),
                           colormap = color_map,
                           description=image_description_base,
@@ -762,26 +907,24 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                 if thumbnail_dcm_name is not None:
                     ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + thumbnail_dcm_name, force=True)
                     photometric_interpretation = ds.PhotometricInterpretation
-                    thumbnail_array = ds.pixel_array
-                    if photometric_interpretation != 'MONOCHROME2': #if not a grayscale image/fluorescence image => brightfield image
+                    thumbnail_array = ds.pixel_array #ycbcr or rgb depending on how the jpeg is encoded
+                    if photometric_interpretation != 'MONOCHROME2' and color_space=='ycbcr': #if not a grayscale image/fluorescence image => brightfield image
                         thumbnail_array = convert_color_space(thumbnail_array, photometric_interpretation, 'RGB')                    
                     thumbnail_shape = thumbnail_array.shape
                     mpp_thumbnail = round(WSI_shape[0]/thumbnail_shape[1],6)
                 else: #create the thumbnail from level 16
                     print('No thumbnail detected, creating one')
-                    #load the pyramidal level 16 to create the thumbnail
-                    if 32 in dcm_levels_dict: #if this level exists
-                        ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[32], force=True)
-                    else:
-                        if 16 in dcm_levels_dict: #if this level exists
-                            ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[16], force=True)
-                        else:
-                            max_level = max(pyramidal_levels) #create thumbnail from maximum level/lowest resolution
-                            ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[max_level], force=True)
+                    #find a pyramidal level suited for thumbnail creation
+                    thumnbnail_level = find_first_level_below_pixel_limit(dcm_levels_height_dict, dcm_levels_width_dict)
+                    if thumnbnail_level is not None:
+                        ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[thumnbnail_level], force=True)
+                    else: #not level suited for thumbnail creation
+                        max_level = max(pyramidal_levels) #create thumbnail from maximum level/lowest resolution
+                        ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[max_level], force=True)
 
                     photometric_interpretation = ds.PhotometricInterpretation
-                    thumbnail_tiles = ds.pixel_array
-                    thumbnail_array = create_img_from_tiles(ds, thumbnail_tiles)
+                    thumbnail_tiles = ds.pixel_array #ycbcr or rgb depending on how the jpeg is encoded
+                    thumbnail_array = create_img_from_tiles(ds, thumbnail_tiles, color_space) #always RGB
                     thumbnail_pil = Image.fromarray(thumbnail_array) 
                     thumbnail_width, thumbnail_height = thumbnail_pil.size
                     # Calculate the aspect ratio of the image
@@ -797,12 +940,12 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                     mpp_thumbnail = round(WSI_shape[0]/thumbnail_shape[1],6)
     
                 image_description_thumbnail = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{thumbnail_shape[1]}x{thumbnail_shape[0]} [0,0,{thumbnail_shape[1]}x{thumbnail_shape[0]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) JPEG Q=100|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {pixel_size}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}|'
-    
+ 
                 tif.write(thumbnail_array,
                           subfiletype=0,
-                          photometric=photometric_arg,
+                          photometric=thumbnail_photometric_arg, #always RGB or palette if monochrome
                           compression='jpeg',
-                          compressionargs={'level':100},  #atypical but is what was found in the image description of SVS files
+                          compressionargs=merge_dicts({'level':100}, thumbnail_compressionargs),  #atypical but is what was found in the image description of SVS files, mergign dict
                           colormap = color_map,
                           description=image_description_thumbnail,
                           extratags=extratag)  #no tiling, the image must be stripped
@@ -826,7 +969,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                     if  ds.DimensionOrganizationType == 'TILED_FULL': #tiled_full
                         frame_list_tiled_full = None  #decoy
                     else: #tiled_sparse
-                        frame_list_tiled_full = create_frame_list_tiled_sparse(ds)
+                        frame_list_tiled_full = create_frame_list_tiled_sparse(ds, color_space)
                     
                     #write level
                     tif.write(generate_tiles(ds, frame_list_tiled_full),  
@@ -837,7 +980,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                             resolution=(1e4 / level / pixel_size, 1e4 / level /pixel_size),
                             photometric=photometric_arg,
                             compression=compression_arg,
-                            compressionargs={'level':91},
+                            compressionargs=compressionargs,
                             tile=(tag_dict['Rows'],tag_dict['Columns']),
                             colormap = color_map,
                             description=image_description_level,
@@ -913,6 +1056,8 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
             shutil.rmtree(path_to_folder+'_unzip')            
         except Exception as e:
             print(f"Could not delete folder {path_to_folder}_unzip: {e}")
+      
+    print('All done')
     
 def main():
     root = tk.Tk()
@@ -977,5 +1122,5 @@ if __name__ == '__main__':
     main()
 
 #Bertrand Chauveau
-#August 2024, updated February 2025
+#August 2024, updated February 2025/August 2025
 #University of Bordeaux
