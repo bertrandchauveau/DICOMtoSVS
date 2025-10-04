@@ -66,9 +66,9 @@ The arguments, to be defined through Tkinter user interface are:
 - end-users must seek the validation of their information technology service management before using the application on an institutional device and only use DICOM originating from a trusted source
 - download the DICOMtoSVS.zip file at:
 
-  => Windows: https://drive.google.com/file/d/1cM2PWCGjhnBxZ57dMKLmzvQ1VoqfvQgs/view?usp=drive_link
+  => Windows: [https://drive.google.com/file/d/1cM2PWCGjhnBxZ57dMKLmzvQ1VoqfvQgs/view?usp=drive_link](https://drive.google.com/file/d/117i5Eqw0l4rDm-Z8JzG6xQ3UohPSIwfQ/view?usp=sharing)
   
-  => MacOS: https://drive.google.com/file/d/1wACxB3FMkSgr7ujSVunLWdzvSMXFJ9wf/view?usp=drive_link
+  => MacOS: pending
   
 - decompress the file in your local disk, ending up with a DICOMtoSVS folder containing a "DICOMtoSVS.exe" file and a "_internal" folder, containing required files to run the executable. Do not separate the "_internal" folder from the exe file. 
 - optional: create a desktop shortcut of the .exe file (right-clik, create shortcut)
@@ -77,8 +77,15 @@ The arguments, to be defined through Tkinter user interface are:
 - The command prompt is automatically closed at the end of the script (at least for Windows). Converted files are stored at .../native_folder_ouput
 
 ## Versions
-The last version is _14082025, with two main changes to fix issue #1: 
+Last version: _04102025, with minor changes to fix issue #3: 
+- remove ending "|" character of the string defining the metadata of the base level, thumbnail and pyramidal levels to ensure compatibility with tifffile
+
+Version _14082025, with two main changes to fix issue #1: 
 - adding support for tiled_spare DICOM WSI with no thumbnail and with a JPEG or JPEG2000 compression type
 - directly infer the color space of JPEG tiles by looking at JPEG metadata, to avoid relying on the Photometric Interpretation DICOM tag, non rarely unreliable
+
+  => Windows: https://drive.google.com/file/d/1cM2PWCGjhnBxZ57dMKLmzvQ1VoqfvQgs/view?usp=drive_link
+
+  => MacOS: https://drive.google.com/file/d/1wACxB3FMkSgr7ujSVunLWdzvSMXFJ9wf/view?usp=drive_link
 
 The original versions remain available by following the links in the paper.
