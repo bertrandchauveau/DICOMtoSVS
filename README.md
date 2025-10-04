@@ -66,9 +66,9 @@ The arguments, to be defined through Tkinter user interface are:
 - end-users must seek the validation of their information technology service management before using the application on an institutional device and only use DICOM originating from a trusted source
 - download the DICOMtoSVS.zip file at:
 
-  => Windows: [https://drive.google.com/file/d/1cM2PWCGjhnBxZ57dMKLmzvQ1VoqfvQgs/view?usp=drive_link](https://drive.google.com/file/d/117i5Eqw0l4rDm-Z8JzG6xQ3UohPSIwfQ/view?usp=sharing)
+  => Windows: https://drive.google.com/file/d/117i5Eqw0l4rDm-Z8JzG6xQ3UohPSIwfQ/view?usp=sharing
   
-  => MacOS: pending
+  => MacOS: https://drive.google.com/file/d/1uyrUsuj1wf5zqssEJicgWA6qlbSltNnE/view?usp=sharing
   
 - decompress the file in your local disk, ending up with a DICOMtoSVS folder containing a "DICOMtoSVS.exe" file and a "_internal" folder, containing required files to run the executable. Do not separate the "_internal" folder from the exe file. 
 - optional: create a desktop shortcut of the .exe file (right-clik, create shortcut)
