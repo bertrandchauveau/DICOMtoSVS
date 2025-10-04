@@ -768,7 +768,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
             
             #define the image description tag, which contains important information such as resolution and compression arguments
             #it is necessary that this image description starts with Aperio, as some software use this to recognize the file as svs
-            image_description_base = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{WSI_shape[0]}x{WSI_shape[1]} [0,0,{WSI_shape[0]}x{WSI_shape[1]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) {compression_name} Q={quality_jpeg}|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {pixel_size}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}|'
+            image_description_base = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{WSI_shape[0]}x{WSI_shape[1]} [0,0,{WSI_shape[0]}x{WSI_shape[1]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) {compression_name} Q={quality_jpeg}|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {pixel_size}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}'
   
             #number of tiles and coordinates
             tile_size_x = ds.Columns
@@ -939,7 +939,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                     thumbnail_shape = thumbnail_array.shape
                     mpp_thumbnail = round(WSI_shape[0]/thumbnail_shape[1],6)
     
-                image_description_thumbnail = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{thumbnail_shape[1]}x{thumbnail_shape[0]} [0,0,{thumbnail_shape[1]}x{thumbnail_shape[0]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) JPEG Q=100|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {pixel_size}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}|'
+                image_description_thumbnail = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{thumbnail_shape[1]}x{thumbnail_shape[0]} [0,0,{thumbnail_shape[1]}x{thumbnail_shape[0]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) JPEG Q=100|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {pixel_size}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}'
  
                 tif.write(thumbnail_array,
                           subfiletype=0,
@@ -954,7 +954,7 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                 #a function to define pyramidal levels
                 def write_pyramidal_level(level, tile_size): #absolute level ID. 4 means that the width and height are divided by 4 as compared to the full resolution image.
                     level_shape = (dcm_levels_width_dict[level], dcm_levels_height_dict[level])
-                    image_description_level = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{dcm_levels_width_dict[level]} [0,0,{dcm_levels_width_dict[level]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) {compression_name} Q={quality_jpeg}|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {round(pixel_size*level, 6)}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}|'
+                    image_description_level = f'Aperio Leica Biosystems (fake): {tag_dict["Private Creator"]} {tag_dict["Manufacturer"]} {tag_dict["Manufacturer Model Name"]} v{tag_dict["Software Versions"]} \n{dcm_levels_width_dict[level]} [0,0,{dcm_levels_width_dict[level]}] ({tag_dict["Columns"]}x{tag_dict["Rows"]}) {compression_name} Q={quality_jpeg}|AppMag = {tag_dict["Objective Lens Power"]}|MPP = {round(pixel_size*level, 6)}|ScanScope ID = {tag_dict["Device Serial Number"]}|ScannerType = {tag_dict["Manufacturer Model Name"]}|SessionMode = {tag_dict["Session Mode"]}'
                     ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[level], force=True)
                     photometric_interpretation = ds.PhotometricInterpretation
                     if photometric_interpretation == 'MONOCHROME2': #grayscale, 
@@ -1124,3 +1124,4 @@ if __name__ == '__main__':
 #Bertrand Chauveau
 #August 2024, updated February 2025/August 2025
 #University of Bordeaux
+
