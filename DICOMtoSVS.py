@@ -138,7 +138,7 @@ def get_exif_colorspace(data: bytes) -> int | None:
 
 def find_first_level_below_pixel_limit(height_dict, width_dict, pixel_limit=4096 * 4096):
     #Finds the first level where the total number of pixels is below a specified limit.
-
+    
     sorted_levels = sorted(height_dict.keys())
     for level in sorted_levels:
         height = height_dict.get(level)
@@ -613,6 +613,77 @@ def create_frame_list_tiled_sparse(ds, color_space):
     return frame_list_tiled_full
 
 
+def get_sub_resolution_from_ds(ds, color_space, downsample=16):
+    frame_list_tiled_full = None
+    #number of tiles and coordinates
+    tile_size_x = ds.Columns
+    tile_size_y = ds.Rows
+    if ds.TotalPixelMatrixColumns % ds.Columns != 0: #pas un multiple de la tile size
+        nb_tile_x = ds.TotalPixelMatrixColumns // ds.Columns +1 #integer division
+    else:
+        nb_tile_x = ds.TotalPixelMatrixColumns // ds.Columns #integer division
+    if ds.TotalPixelMatrixRows % ds.Rows != 0: #pas un multiple de la tile size
+        nb_tile_y = int(ds.TotalPixelMatrixRows // ds.Rows) +1
+    else:
+        nb_tile_y = ds.TotalPixelMatrixRows // ds.Rows
+    wsi_width = ds.TotalPixelMatrixColumns #width
+    wsi_height = ds.TotalPixelMatrixRows #height
+    photometric_interpretation = ds.PhotometricInterpretation
+    expected_nb_tiles = nb_tile_x * nb_tile_y
+
+    frame_list_tiled_full = None
+    if hasattr(ds, 'DimensionOrganizationType'):
+        if ds.DimensionOrganizationType == 'TILED_FULL': #tiled_full
+            def generate_tiles(ds, frame_list_tiled_full):
+                for frame in generate_pixel_data_frame(ds.PixelData, ds.NumberOfFrames):
+                    yield frame
+        else: #tiled_sparse
+            frame_list_tiled_full = create_frame_list_tiled_sparse(ds, color_space)
+            def generate_tiles(ds, frame_list_tiled_full):
+                for frame in frame_list_tiled_full:
+                    yield frame
+    else: #some 3DHistech files were found without the DimensionOrganizationType DICOM tag
+        print('No DimensionOrganizationType attribute, inferring a TILED_SPARSE organization')
+        ds.DimensionOrganizationType = None #decoy
+        frame_list_tiled_full = create_frame_list_tiled_sparse(ds, color_space)
+        def generate_tiles(ds, frame_list_tiled_full):
+            for frame in frame_list_tiled_full:
+                yield frame
+
+    #create a lower resolution image
+    i=0
+    coords = []
+    tile_size = []
+    for col in range(0, nb_tile_y):
+        for row in range(0, nb_tile_x):
+            if row==(nb_tile_x-1) and (ds.TotalPixelMatrixColumns % ds.Columns) !=0: #last tile but tile not complete/less than tile size
+                tile_size_x = ds.TotalPixelMatrixColumns % ds.Columns
+            else:
+                tile_size_x = ds.Columns
+            if col==(nb_tile_y-1) and (ds.TotalPixelMatrixRows % ds.Rows) !=0:  #last tile but tile not complete/less than tile size
+                tile_size_y = ds.TotalPixelMatrixRows % ds.Rows
+            else:
+                tile_size_y = ds.Rows
+            coords.append((col,row))
+            tile_size.append((tile_size_y, tile_size_x))
+
+    idx = 0
+    if photometric_interpretation == 'MONOCHROME2': #fluo
+        thumbnail_array = np.zeros((int(ds.TotalPixelMatrixRows/downsample), int(ds.TotalPixelMatrixColumns/downsample)), dtype = np.uint8)
+    else: #brightfield
+        thumbnail_array = np.zeros((int(ds.TotalPixelMatrixRows/downsample), int(ds.TotalPixelMatrixColumns/downsample),3), dtype = np.uint8)
+    for encoded_tile in generate_tiles(ds, frame_list_tiled_full):
+       if ds.file_meta.TransferSyntaxUID == '1.2.840.10008.1.2.4.91': #JPEG2000
+            decoded_tile = imagecodecs.jpeg2k_decode(encoded_tile)[::downsample, ::downsample] #outcolorspace argument fails and output is always RGB whatever the color space
+       else: #assume JPEG Baselin otherwise
+            decoded_tile = imagecodecs.jpeg8_decode(encoded_tile)[::downsample, ::downsample] #outcolorspace argument fails and output is always RGB whatever the color space
+       #if color_space == 'ycbcr' and ds.DimensionOrganizationType == 'TILED_FULL': #if tiled sparse, decoding is always RGB
+       #    decoded_tile = convert_color_space(decoded_tile, photometric_interpretation, 'RGB')
+       thumbnail_array[int(coords[idx][0]*ds.Rows/downsample):int(coords[idx][0]*ds.Rows/downsample)+int(tile_size[idx][0]/downsample), int(coords[idx][1]*ds.Columns/downsample):int(coords[idx][1]*ds.Columns/downsample)+int(tile_size[idx][1]/downsample)] = decoded_tile[0:int(tile_size[idx][0]/downsample), 0:int(tile_size[idx][1]/downsample)]
+       idx += 1
+    return thumbnail_array
+
+
 def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool, anonymize: bool, add_DICOM_tags: bool):
     '''
     Parameters:
@@ -915,16 +986,19 @@ def from_DICOM_to_SVS(path_to_folder, is_zipped: bool, label: bool, macro: bool,
                 else: #create the thumbnail from level 16
                     print('No thumbnail detected, creating one')
                     #find a pyramidal level suited for thumbnail creation
-                    thumnbnail_level = find_first_level_below_pixel_limit(dcm_levels_height_dict, dcm_levels_width_dict)
+                    thumnbnail_level = find_first_level_below_pixel_limit(dcm_levels_height_dict, dcm_levels_width_dict, pixel_limit=4096 * 4096)
                     if thumnbnail_level is not None:
                         ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[thumnbnail_level], force=True)
+                        photometric_interpretation = ds.PhotometricInterpretation
+                        thumbnail_tiles = ds.pixel_array #ycbcr or rgb depending on how the jpeg is encoded
+                        thumbnail_array = create_img_from_tiles(ds, thumbnail_tiles, color_space) #always RGB                    
                     else: #not level suited for thumbnail creation
+                        print('No level suited for thumbnail creation. Creating a lower level resolution, which may take some time')                        
                         max_level = max(pyramidal_levels) #create thumbnail from maximum level/lowest resolution
                         ds = pydicom.dcmread(path_unzip + '/' + WSI_name_todcm + '/' + dcm_levels_dict[max_level], force=True)
-
-                    photometric_interpretation = ds.PhotometricInterpretation
-                    thumbnail_tiles = ds.pixel_array #ycbcr or rgb depending on how the jpeg is encoded
-                    thumbnail_array = create_img_from_tiles(ds, thumbnail_tiles, color_space) #always RGB
+                        photometric_interpretation = ds.PhotometricInterpretation
+                        #pyramidalize the image and then create thumbnail
+                        thumbnail_array = get_sub_resolution_from_ds(ds, color_space, downsample=16)
                     thumbnail_pil = Image.fromarray(thumbnail_array) 
                     thumbnail_width, thumbnail_height = thumbnail_pil.size
                     # Calculate the aspect ratio of the image
@@ -1122,6 +1196,5 @@ if __name__ == '__main__':
     main()
 
 #Bertrand Chauveau
-#August 2024, updated February 2025/August 2025
+#August 2024, last updated 15 August 2026
 #University of Bordeaux
-
