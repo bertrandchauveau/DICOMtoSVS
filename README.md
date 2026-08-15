@@ -7,7 +7,7 @@ Pathology Departments are encouraged to use Digital Imaging and Communication in
 
 DICOM is expected to be the future reference WSI format, and as such commercial software will ultimately add support for it. In the meantime, one solution is to convert DICOM WSI into a more common WSI file format. Here is proposed an SVS-like pyramidal TIFF organization. SVS files are actual TIFF files, with no proprietary extensions, and is the WSI file format used by Aperio (Leica Biosystems).
 
-Here is proposed a Python-based solution to convert DICOM WSI into SVS-like TIFF pyramidal images. These slides can then be opened by common software supporting the SVS format (Aperio ImageScope, QuPath, TeleSlide, ...). This conversion mainly relies on the Pydicom package for reading DICOM slides and tifffile for writing the SVS-like file.
+Here is proposed a Python-based solution to convert DICOM WSI into SVS-like TIFF pyramidal images. These slides can then be opened by common software supporting the SVS format (Aperio ImageScope, QuPath, TeleSlide, ...). This conversion mainly relies on the Pydicom package for reading DICOM slides and tifffile for writing the SVS-like file. **The conversion is lossless for the full resolution level** (not for other pyramidal levels and associated images)?
 
 The code is provided in 3 ways: 
 - a Colab-compatible jupyter notebook for easy testing
@@ -19,7 +19,7 @@ The code is provided in 3 ways:
 
 The Python script was tested using a Windows operating system in a conda virtual environment.
 The main dependencies used were:
-- Pydicom 2.4.4
+- Pydicom 2.4.5
 - imagecodecs 2024.12.30
 - tifffile 2024.12.12
 - natsort 8.4.0
@@ -27,7 +27,7 @@ The main dependencies used were:
 - pillow 10.4.0
 - pylibjpeg 2.0.1
 
-The Windows executable was tested on Windows 10 Professional 22H2 and Windows 11 Professional 24H2. The only required dependency is Microsoft Visual C++ Redistributable, available at https://learn.microsoft.com/fr-fr/cpp/windows/latest-supported-vc-redist?view=msvc-170.
+The Windows executable was tested on Windows 10 Professional 22H2 and Windows 11 Professional 25H2. The only required dependency is Microsoft Visual C++ Redistributable, available at https://learn.microsoft.com/fr-fr/cpp/windows/latest-supported-vc-redist?view=msvc-170.
 The MacOS executable was tested on MacOS Sequoia 15.6.1.
 
 Using a 13th Gen Intel(R) Core(TM) i7-13700 with 16Gb of RAM, the mean time to convert a 1Gb WSI is about 18 seconds. Label and macro images, when present in the original DICOM file, can either be removed or retained during conversion. Optionally, additional DICOM tags can be embedded in the converted file in a custom TIFF tag (65000). Moreover, WSI anonymization can be performed during conversion, by renaming the WSI, and by removing label and macro images, together with optional metadata.
@@ -66,9 +66,8 @@ The arguments, to be defined through Tkinter user interface are:
 - end-users must seek the validation of their information technology service management before using the application on an institutional device and only use DICOM originating from a trusted source
 - download the DICOMtoSVS.zip file at:
 
-  => Windows: https://drive.google.com/file/d/117i5Eqw0l4rDm-Z8JzG6xQ3UohPSIwfQ/view?usp=sharing
-  
-  => MacOS: https://drive.google.com/file/d/1uyrUsuj1wf5zqssEJicgWA6qlbSltNnE/view?usp=sharing
+  => Windows: pending
+  => MacOS: pending
   
 - decompress the file in your local disk, ending up with a DICOMtoSVS folder containing a "DICOMtoSVS.exe" file and a "_internal" folder, containing required files to run the executable. Do not separate the "_internal" folder from the exe file. 
 - optional: create a desktop shortcut of the .exe file (right-clik, create shortcut)
@@ -77,8 +76,16 @@ The arguments, to be defined through Tkinter user interface are:
 - The command prompt is automatically closed at the end of the script (at least for Windows). Converted files are stored at .../native_folder_ouput
 
 ## Versions
-Last version: _04102025, with minor changes to fix issue #3: 
+Last version: _20260815, with minor changes to fix issue #4: 
+- when the input WSI was not pyramidal, the creation of the thumbnail used to decompress the full resolution image, which could cause out-of-memory error. Thumbnail creation is now based on a subresolution generated on-the-fly.
+- update pydicom dependency from 2.4.4 to 2.4.5
+
+Version: _04102025, with minor changes to fix issue #3: 
 - remove ending "|" character of the string defining the metadata of the base level, thumbnail and pyramidal levels to ensure compatibility with tifffile
+  => Windows: https://drive.google.com/file/d/117i5Eqw0l4rDm-Z8JzG6xQ3UohPSIwfQ/view?usp=sharing
+  
+  => MacOS: https://drive.google.com/file/d/1uyrUsuj1wf5zqssEJicgWA6qlbSltNnE/view?usp=sharing
+
 
 Version _14082025, with two main changes to fix issue #1: 
 - adding support for tiled_spare DICOM WSI with no thumbnail and with a JPEG or JPEG2000 compression type
